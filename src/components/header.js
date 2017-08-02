@@ -4,7 +4,8 @@ import {Link} from 'react-router';
 import * as actions from '../actions';
 
 class Header extends Component {
-  handleClick() {
+  handleClick(e) {
+    e.preventDefault();
     this.props.routeToAdmin();
   }
 
@@ -15,7 +16,7 @@ class Header extends Component {
         <Link className="nav-link" to="/signout">Sign Out</Link>
         </li>,
         <li className="nav-item" key={2}>
-          <Link className="nav-link" onClick={this.handleClick.bind(this)}>Admin</Link>
+          <a href="#"  className="nav-link" onClick={this.handleClick.bind(this)} >Admin</a>
         </li>
     ];
     } else {
