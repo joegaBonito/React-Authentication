@@ -8,9 +8,9 @@ I have used Spring Framework for the backend, and here is how:
 I have used this demo https://github.com/joegaBonito/jwt-spring-security-demo
 
 ##### You will need to separately create a "SimpleCORSFilter" class for CORS config:
-@Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
-public class SimpleCORSFilter implements Filter {
+    @Component
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public class SimpleCORSFilter implements Filter {
 	public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
 
         HttpServletResponse response = (HttpServletResponse) res;
@@ -26,22 +26,23 @@ public class SimpleCORSFilter implements Filter {
             chain.doFilter(req, res);
         }
     }
+    
     public void destroy() {}
 
-	@Override
+    @Override
 	public void init(FilterConfig filterConfig) throws ServletException {
 		// TODO Auto-generated method stub
 		
 	}
 }
 
-##### Below is the "SecurityConfig" class that needs to be modified from the demo project.
-@Configuration
-@EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class SecurityConfig extends WebSecurityConfigurerAdapter {
+##### Below is the "SecurityConfig" class that needs to be modified from the demo project. {
+    @Configuration
+    @EnableWebSecurity
+    @EnableGlobalMethodSecurity(prePostEnabled = true)
+	public class SecurityConfig extends WebSecurityConfigurerAdapter {
 	
-	@Autowired
+    @Autowired
     private JwtAuthenticationEntryPoint unauthorizedHandler;
 
     @Autowired
@@ -54,51 +55,51 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .passwordEncoder(passwordEncoder());
     }
     
-	@Bean
-	public PasswordEncoder passwordEncoder() {
-		PasswordEncoder encoder = new BCryptPasswordEncoder();
-		return encoder;
-	}
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+	PasswordEncoder encoder = new BCryptPasswordEncoder();
+	return encoder;
+    }
 	
-	@Bean
+    @Bean
     public JwtAuthenticationTokenFilter authenticationTokenFilterBean() throws Exception {
         return new JwtAuthenticationTokenFilter();
     }
 
-	@Override
-	protected void configure(HttpSecurity http) throws Exception {
-		http// we don't need CSRF because our token is invulnerable
-        .csrf().disable()
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+	http	// we don't need CSRF because our token is invulnerable
+         .csrf().disable()
 
-        .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
+       	 .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
 
-        // don't create session
-        .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
+       	// don't create session
+       	.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
 
         .authorizeRequests()
         //.antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-        // allow anonymous resource requests
+       	// allow anonymous resource requests
         .antMatchers(
-                HttpMethod.GET,
-                "/",
-                "/*.html",
-                "/favicon.ico",
-                "/**/*.html",
-                "/**/*.css",
-                "/**/*.js"
+             HttpMethod.GET,
+             "/",
+             "/*.html",
+             "/favicon.ico",
+             "/**/*.html",
+             "/**/*.css",
+             "/**/*.js"
         ).permitAll()
         .antMatchers("/signup").permitAll()
         .antMatchers("/auth/**").permitAll()
         .antMatchers("/admin/**").hasRole("ADMIN")
         .anyRequest().authenticated();
 
-// Custom JWT based security filter
-		http
+        // Custom JWT based security filter
+	http
         .addFilterBefore(authenticationTokenFilterBean(), UsernamePasswordAuthenticationFilter.class);
 
-// disable page caching
-		http.headers().cacheControl();
+        // disable page caching
+	http.headers().cacheControl();
 }
 
 	@Autowired
@@ -121,43 +122,23 @@ You will need to modify few things for authentication to be implemented successf
 Most importantly, make sure to implement "UserDetailsService" interface to your user service implemented class and 
 "UserDetails" interface to your user entity class.
 Since each program works differently, a developer would need to modify as it is needed.
-No files with the name that begins with "JWT" will need to be touched.
+
+##### In the JwtTokenUtil class:
+
+ public Boolean validateToken(String token, UserDetails userDetails) {
+        JwtUser user = (JwtUser) userDetails;   <== This Entity needs to change to  UserDetails user = userDetailsService.loadUserByUsername(userDetails.getUsername());
+        final String username = getUsernameFromToken(token);
+        final Date created = getCreatedDateFromToken(token);
+        //final Date expiration = getExpirationDateFromToken(token);
+        return (
+                username.equals(user.getUsername())
+                        && !isTokenExpired(token)
+                        && !isCreatedBeforeLastPasswordReset(created, user.getLastPasswordResetDate()));
+    }
 
 ##### For the reference, this is how the modified controllers look like:
-@RestController
-public class AuthenticationRestController {
 
-    @Value("${jwt.header}")
-    private String tokenHeader;
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
-
-    @Autowired
-    private JwtTokenUtil jwtTokenUtil;
-
-    @Autowired
-    private UserDetailsService userDetailsService;
-
-    @RequestMapping(value = "${jwt.route.authentication.path}", method = RequestMethod.POST)
-    public ResponseEntity<?> createAuthenticationToken(@RequestBody JwtAuthenticationRequest authenticationRequest, Device device) throws AuthenticationException {
-
-        // Perform the security
-        final Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        authenticationRequest.getUsername(),
-                        authenticationRequest.getPassword()
-                )
-        );
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        // Reload password post-security so we can generate token
-        final UserDetails userDetails = userDetailsService.loadUserByUsername(authenticationRequest.getUsername());
-        final String token = jwtTokenUtil.generateToken(userDetails, device);
-
-        // Return the token
-        return ResponseEntity.ok(new JwtAuthenticationResponse(token));
-    }
+In the AuthenticationRestController,
 
     @RequestMapping(value = "${jwt.route.authentication.refresh}", method = RequestMethod.GET)
     public ResponseEntity<?> refreshAndGetAuthenticationToken(HttpServletRequest request) {
@@ -172,10 +153,8 @@ public class AuthenticationRestController {
             return ResponseEntity.badRequest().body(null);
         }*/
     }
-}
 
-@RestController
-public class MethodProtectedRestController {
+In the MethodProtectedRestController,
 
     /**
      * This is an example of some different kinds of granular restriction for endpoints. You can use the built-in SPEL expressions
@@ -188,30 +167,11 @@ public class MethodProtectedRestController {
         return ResponseEntity.ok("Greetings from admin protected method!");
     }
 
-}
 
-@RestController
-public class UserRestController {
+In the UserRestController, can simply just add below codes:
 
-    @Value("${jwt.header}")
-    private String tokenHeader;
-
-    @Autowired
-    private JwtTokenUtil jwtTokenUtil;
-
-    @Autowired
-    private UserDetailsService userDetailsService;
-    
     @Autowired
     private MemberService memberService;
-
-    @RequestMapping(value = "user", method = RequestMethod.GET)
-    public Member getAuthenticatedUser(HttpServletRequest request) {
-        String token = request.getHeader(tokenHeader);
-        String username = jwtTokenUtil.getUsernameFromToken(token);
-        Member user = (Member) userDetailsService.loadUserByUsername(username);
-        return user;
-    }
     
     @RequestMapping(value = "signup", method = RequestMethod.POST)
     public ResponseEntity<?> signUp(@RequestBody JwtAuthenticationRequest authenticationRequest) {
@@ -221,6 +181,5 @@ public class UserRestController {
         memberService.save(member);
 		return ResponseEntity.ok(null);
     }
-}
 
 ### Also, Do Not Forget to copy over the application.yml file!!!
