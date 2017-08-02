@@ -1,25 +1,185 @@
-# ReduxSimpleStarter
+# Redux-Authentication
 
-Interested in learning [Redux](https://www.udemy.com/react-redux/)?
+This project contains signin, signout, signup, and validate authorization through server for ReactJs using JWT Token.
+You will also need to configure the Back End separately.
+I have used Spring Framework for the backend, and here is how:
 
-### Getting Started
+### How to Configure:
+I have used this demo https://github.com/joegaBonito/jwt-spring-security-demo
 
-There are two methods for getting started with this repo.
+##### You will need to separately create a "SimpleCORSFilter" class for CORS config:
+    @Component
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public class SimpleCORSFilter implements Filter {
+	public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
 
-#### Familiar with Git?
-Checkout this repo, install dependencies, then start the gulp process with the following:
+        HttpServletResponse response = (HttpServletResponse) res;
+        HttpServletRequest request = (HttpServletRequest) req;
+        response.setHeader("Access-Control-Allow-Origin", "http://localhost:3007");
+        response.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, DELETE");
+        response.setHeader("Access-Control-Max-Age", "3600");
+        response.setHeader("Access-Control-Allow-Credentials", "false");
+        response.setHeader("Access-Control-Allow-Headers", "Origin,Accept,X-Requested-With,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers,Authorization");
+        if(request.getMethod().equals(HttpMethod.OPTIONS.name())){
+            response.setStatus(HttpStatus.NO_CONTENT.value());
+        }else{
+            chain.doFilter(req, res);
+        }
+    }
+    
+    public void destroy() {}
 
-```
-> git clone https://github.com/StephenGrider/ReduxSimpleStarter.git
-> cd ReduxSimpleStarter
-> npm install
-> npm start
-```
+    @Override
+	public void init(FilterConfig filterConfig) throws ServletException {
+		// TODO Auto-generated method stub
+		
+	}
+}
 
-#### Not Familiar with Git?
-Click [here](https://github.com/StephenGrider/ReactStarter/releases) then download the .zip file.  Extract the contents of the zip file, then open your terminal, change to the project directory, and:
+##### Below is the "SecurityConfig" class that needs to be modified from the demo project. {
+    @Configuration
+    @EnableWebSecurity
+    @EnableGlobalMethodSecurity(prePostEnabled = true)
+	public class SecurityConfig extends WebSecurityConfigurerAdapter {
+	
+    @Autowired
+    private JwtAuthenticationEntryPoint unauthorizedHandler;
 
-```
-> npm install
-> npm start
-```
+    @Autowired
+    private UserDetailsService userDetailsService;
+
+    @Autowired
+    public void configureAuthentication(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
+        authenticationManagerBuilder
+                .userDetailsService(this.userDetailsService)
+                .passwordEncoder(passwordEncoder());
+    }
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+	PasswordEncoder encoder = new BCryptPasswordEncoder();
+	return encoder;
+    }
+	
+    @Bean
+    public JwtAuthenticationTokenFilter authenticationTokenFilterBean() throws Exception {
+        return new JwtAuthenticationTokenFilter();
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+	http	// we don't need CSRF because our token is invulnerable
+         .csrf().disable()
+
+       	 .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
+
+       	// don't create session
+       	.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
+
+        .authorizeRequests()
+        //.antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+       	// allow anonymous resource requests
+        .antMatchers(
+             HttpMethod.GET,
+             "/",
+             "/*.html",
+             "/favicon.ico",
+             "/**/*.html",
+             "/**/*.css",
+             "/**/*.js"
+        ).permitAll()
+        .antMatchers("/signup").permitAll()
+        .antMatchers("/auth/**").permitAll()
+        .antMatchers("/admin/**").hasRole("ADMIN")
+        .anyRequest().authenticated();
+
+        // Custom JWT based security filter
+	http
+        .addFilterBefore(authenticationTokenFilterBean(), UsernamePasswordAuthenticationFilter.class);
+
+        // disable page caching
+	http.headers().cacheControl();
+}
+
+	@Autowired
+	private MemberRepository memberRepository;
+
+	// * This configureGlobal method is used to authenticate users from the
+	// memberUserService.
+	@Autowired
+	public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
+		auth.userDetailsService(new MemberServiceImpl(memberRepository))
+		.passwordEncoder(new BCryptPasswordEncoder());
+	}
+}
+
+### What to copy over:
+You will only need to copy over the security folder and sub-folders beneath it, since "User" entity will be configured separately.
+
+### How and What to modify:
+You will need to modify few things for authentication to be implemented successfully.
+Most importantly, make sure to implement "UserDetailsService" interface to your user service implemented class and 
+"UserDetails" interface to your user entity class.
+Since each program works differently, a developer would need to modify as it is needed.
+
+##### In the JwtTokenUtil class:
+
+ public Boolean validateToken(String token, UserDetails userDetails) {
+        JwtUser user = (JwtUser) userDetails;   <== This Entity needs to change to  UserDetails user = userDetailsService.loadUserByUsername(userDetails.getUsername());
+        final String username = getUsernameFromToken(token);
+        final Date created = getCreatedDateFromToken(token);
+        //final Date expiration = getExpirationDateFromToken(token);
+        return (
+                username.equals(user.getUsername())
+                        && !isTokenExpired(token)
+                        && !isCreatedBeforeLastPasswordReset(created, user.getLastPasswordResetDate()));
+    }
+
+##### For the reference, this is how the modified controllers look like:
+
+In the AuthenticationRestController,
+
+    @RequestMapping(value = "${jwt.route.authentication.refresh}", method = RequestMethod.GET)
+    public ResponseEntity<?> refreshAndGetAuthenticationToken(HttpServletRequest request) {
+        String token = request.getHeader(tokenHeader);
+        String username = jwtTokenUtil.getUsernameFromToken(token);
+        Member user = (Member) userDetailsService.loadUserByUsername(username);  //Member class was the entity that has implemented UserDetails interface.
+        return ResponseEntity.ok(new JwtAuthenticationResponse(token));
+       /* if (jwtTokenUtil.canTokenBeRefreshed(token, user.getLastPasswordResetDate())) {
+            String refreshedToken = jwtTokenUtil.refreshToken(token);
+            return ResponseEntity.ok(new JwtAuthenticationResponse(refreshedToken));
+        } else {
+            return ResponseEntity.badRequest().body(null);
+        }*/
+    }
+
+In the MethodProtectedRestController,
+
+    /**
+     * This is an example of some different kinds of granular restriction for endpoints. You can use the built-in SPEL expressions
+     * in @PreAuthorize such as 'hasRole()' to determine if a user has access. Remember that the hasRole expression assumes a
+     * 'ROLE_' prefix on all role names. So 'ADMIN' here is actually stored as 'ROLE_ADMIN' in database!
+     **/
+    @RequestMapping(value="admin",method = RequestMethod.GET)
+    //@PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getAdminGreeting() {
+        return ResponseEntity.ok("Greetings from admin protected method!");
+    }
+
+
+In the UserRestController, can simply just add below codes:
+
+    @Autowired
+    private MemberService memberService;
+    
+    @RequestMapping(value = "signup", method = RequestMethod.POST)
+    public ResponseEntity<?> signUp(@RequestBody JwtAuthenticationRequest authenticationRequest) {
+        Member member = new Member();
+        member.setEmail(authenticationRequest.getUsername());
+        member.setPassword(authenticationRequest.getPassword());
+        memberService.save(member);
+		return ResponseEntity.ok(null);
+    }
+
+### Also, Do Not Forget to copy over the application.yml file!!!
